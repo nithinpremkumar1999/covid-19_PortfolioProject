@@ -1,0 +1,265 @@
+SET search_path TO public
+
+CREATE TABLE covid_deaths(
+	iso_code TEXT,
+	continent TEXT,
+	location TEXT,
+	date DATE,
+	population NUMERIC,
+	total_cases NUMERIC,
+	new_cases NUMERIC,
+	new_cases_smoothed NUMERIC,
+	total_deaths NUMERIC,
+	new_deaths NUMERIC,
+	new_deaths_smoothed NUMERIC,
+	total_cases_per_million NUMERIC,
+	new_cases_per_million NUMERIC,
+	new_cases_smoothed_per_million NUMERIC,
+	total_deaths_per_million NUMERIC,
+	new_deaths_per_million NUMERIC,
+	new_deaths_smoothed_per_million NUMERIC,
+	reproduction_rate NUMERIC,
+	icu_patients NUMERIC,
+	icu_patients_per_million NUMERIC,
+	hosp_patients NUMERIC,
+	hosp_patients_per_million NUMERIC,
+	weekly_icu_admissions NUMERIC,
+	weekly_icu_admissions_per_million NUMERIC,
+	weekly_hosp_admissions NUMERIC,
+	weekly_hosp_admissions_per_million NUMERIC	
+);
+
+COPY covid_deaths FROM 'C:\Users\Owner\OneDrive\Project\Data Analytics\Covid-19\covid_deaths.csv' WITH CSV HEADER;
+
+SELECT *
+FROM covid_deaths;
+
+CREATE TABLE covid_vaccinations(
+	iso_code TEXT,
+	continent TEXT,
+	location TEXT,
+	date DATE,
+	new_tests NUMERIC,
+	total_tests NUMERIC,
+	total_tests_per_thousand NUMERIC,
+	new_tests_per_thousand NUMERIC,
+	new_tests_smoothed NUMERIC,
+	new_tests_smoothed_per_thousand NUMERIC,
+	positive_rate NUMERIC,
+	tests_per_case NUMERIC,
+	tests_units TEXT,
+	total_vaccinations NUMERIC,
+	people_vaccinated NUMERIC,
+	people_fully_vaccinated NUMERIC,
+	new_vaccinations NUMERIC,
+	new_vaccinations_smoothed NUMERIC,
+	total_vaccinations_per_hundred NUMERIC,
+	people_vaccinated_per_hundred NUMERIC,
+	people_fully_vaccinated_per_hundred NUMERIC,
+	new_vaccinations_smoothed_per_million NUMERIC,
+	stringency_index NUMERIC,
+	population_density NUMERIC,
+	median_age NUMERIC,
+	aged_65_older NUMERIC,
+	aged_70_older NUMERIC,
+	gdp_per_capita NUMERIC,
+	extreme_poverty NUMERIC,
+	cardiovasc_death_rate NUMERIC,
+	diabetes_prevalence NUMERIC,
+	female_smokers NUMERIC,
+	male_smokers NUMERIC,
+	handwashing_facilities NUMERIC,
+	hospital_beds_per_thousand NUMERIC,
+	life_expectancy NUMERIC,
+	human_development_index NUMERIC
+);
+
+COPY covid_vaccinations FROM 'C:\Users\Owner\OneDrive\Project\Data Analytics\Covid-19\covid_vaccinations.csv' WITH CSV HEADER;
+
+SELECT *
+FROM covid_vaccinations;
+
+SELECT location, date, total_cases, new_cases, total_deaths, population
+FROM covid_deaths
+ORDER BY location, date;
+
+-- Total cases v/s Total deaths
+-- Shows likelyhood of dying if you contract covid in India
+
+SELECT location, date, total_cases, total_deaths, (total_deaths/total_cases)*100 AS death_percentage
+FROM covid_deaths
+WHERE location = 'India'
+ORDER BY location, date;
+
+-- ICU patients v/s hosp_patients
+
+SELECT location, SUM(hosp_patients), SUM(icu_patients), (SUM(icu_patients)/SUM(hosp_patients))*100 AS rate_ICU
+FROM covid_deaths
+WHERE icu_patients IS NOT NULL AND hosp_patients IS NOT NULL AND hosp_patients <> 0
+GROUP BY location
+ORDER BY location;
+
+-- Looking at Total cases v/s Population
+-- Shows percentage of population got Covid in India
+
+SELECT location, date, total_cases, population, (total_cases/population)*100 AS covid_infection_percentage
+FROM covid_deaths
+WHERE location = 'India'
+ORDER BY location, date;
+
+-- Looking at countries with highest infection rate compared to population
+
+SELECT location, MAX(total_cases) AS highest_infection_count, population, MAX((total_cases/population))*100 AS max_covid_infection_percentage
+FROM covid_deaths
+GROUP BY location, population
+ORDER BY max_covid_infection_percentage DESC;
+
+-- Looking at countries with highest death count per population
+
+SELECT location, MAX(CAST(total_deaths AS int)) AS total_deaths
+FROM covid_deaths
+WHERE continent IS NOT NULL
+GROUP BY location
+ORDER BY total_deaths DESC;
+
+SELECT location, MAX(CAST(total_deaths AS int)) AS total_deaths
+FROM covid_deaths
+WHERE continent IS NULL
+GROUP BY location
+ORDER BY total_deaths DESC;
+
+-- Showing continents with highest death counts
+
+SELECT continent, MAX(CAST(total_deaths AS int)) AS total_deaths
+FROM covid_deaths
+WHERE continent IS NOT NULL
+GROUP BY continent
+ORDER BY total_deaths DESC;
+
+-- Global numbers date wise
+
+SELECT date, SUM(new_cases) AS total_cases, SUM(new_deaths) AS total_deaths, (SUM(new_deaths)/SUM(new_cases))*100 AS death_percentage
+FROM covid_deaths
+WHERE continent IS NOT NULL
+GROUP BY date
+ORDER BY date;
+
+SELECT SUM(new_cases) AS total_cases, SUM(new_deaths) AS total_deaths, (SUM(new_deaths)/SUM(new_cases))*100 AS death_percentage
+FROM covid_deaths
+WHERE continent IS NOT NULL;
+
+-- Looking at Total Populations v/s Vaccinations
+
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, 
+SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date)
+AS rolling_people_vaccinated
+FROM covid_deaths AS dea
+JOIN covid_vaccinations AS vac
+ON dea.location = vac.location AND
+	dea.date = vac.date
+WHERE dea.continent IS NOT NULL
+ORDER BY dea.continent, dea.location, dea.date;
+
+-- USE CTE
+
+WITH PopVsVac (continent, location, date, population, new_vaccinations, rolling_people_vaccinated)
+AS
+(
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, 
+SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date)
+AS rolling_people_vaccinated
+FROM covid_deaths AS dea
+JOIN covid_vaccinations AS vac
+ON dea.location = vac.location AND
+	dea.date = vac.date
+WHERE dea.continent IS NOT NULL
+ORDER BY dea.continent, dea.location, dea.date
+)
+SELECT *, (rolling_people_vaccinated/population)*100
+FROM PopVsVac;
+
+-- Comparing vaccinated population of asian countries
+
+WITH PopVsVac (continent, location, date, population, new_vaccinations, rolling_people_vaccinated)
+AS
+(
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, 
+SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date)
+AS rolling_people_vaccinated
+FROM covid_deaths AS dea
+JOIN covid_vaccinations AS vac
+ON dea.location = vac.location AND
+	dea.date = vac.date
+WHERE dea.continent IS NOT NULL
+ORDER BY dea.continent, dea.location, dea.date
+)
+SELECT location, MAX(rolling_people_vaccinated/population)*100 AS max_vaccinated
+FROM PopVsVac
+WHERE continent = 'Asia' AND continent IS NOT NULL
+GROUP BY location
+ORDER BY max_vaccinated DESC;
+
+-- Creating View to store data for later visualization
+
+CREATE VIEW percent_population_vaccinated AS
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, 
+SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date)
+AS rolling_people_vaccinated
+FROM covid_deaths AS dea
+JOIN covid_vaccinations AS vac
+ON dea.location = vac.location AND
+	dea.date = vac.date
+WHERE dea.continent IS NOT NULL
+ORDER BY dea.continent, dea.location, dea.date;
+
+SELECT *
+FROM percent_population_vaccinated;
+
+-- Looking at Vaccinations v/s Deaths
+
+SELECT dea.continent, dea.location, dea.date, dea.new_deaths, 
+SUM(dea.new_deaths) OVER (Partition by dea.location ORDER BY dea.date, dea.location)
+AS rolling_people_deaths, 
+vac.new_vaccinations, SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date)
+AS rolling_people_vaccinated
+FROM covid_deaths AS dea
+JOIN covid_vaccinations AS vac
+ON dea.location = vac.location AND dea.date = vac.date
+WHERE dea.continent IS NOT NULL
+ORDER BY dea.continent, dea.location, dea.date;
+
+-- CTE
+
+WITH DeaVsVac (continent, location, date, new_deaths, rolling_people_deaths, new_vaccinations, rolling_people_vaccinated)
+AS (
+SELECT dea.continent, dea.location, dea.date, dea.new_deaths, 
+SUM(dea.new_deaths) OVER (Partition by dea.location ORDER BY dea.date, dea.location)
+AS rolling_people_deaths, 
+vac.new_vaccinations, SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date)
+AS rolling_people_vaccinated
+FROM covid_deaths AS dea
+JOIN covid_vaccinations AS vac
+ON dea.location = vac.location AND dea.date = vac.date
+WHERE dea.continent IS NOT NULL
+ORDER BY dea.continent, dea.location, dea.date
+)
+SELECT CORR(rolling_people_deaths, rolling_people_vaccinated)
+FROM DeaVsVac
+WHERE rolling_people_deaths IS NOT NULL AND rolling_people_vaccinated IS NOT NULL
+;
+
+-- Create View
+
+CREATE VIEW deaths_vaccinations AS
+SELECT dea.continent, dea.location, dea.date, dea.new_deaths, 
+SUM(dea.new_deaths) OVER (Partition by dea.location ORDER BY dea.date, dea.location)
+AS rolling_people_deaths, 
+vac.new_vaccinations, SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date)
+AS rolling_people_vaccinated
+FROM covid_deaths AS dea
+JOIN covid_vaccinations AS vac
+ON dea.location = vac.location AND dea.date = vac.date
+WHERE dea.continent IS NOT NULL
+ORDER BY dea.continent, dea.location, dea.date;
+
+
